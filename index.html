@@ -461,6 +461,7 @@ const sitesDocRef = doc(db, 'meta', 'sites');
   let etaFormOpenFor = null;
   let deliveryFormOpenFor = null;
   let commandeFormOpenFor = null;
+  let drafts = {};
 
   const $ = (id) => document.getElementById(id);
 
@@ -727,8 +728,8 @@ const sitesDocRef = doc(db, 'meta', 'sites');
     let commandeForm = '';
     if(commandeFormOpenFor === r.id){
       commandeForm = `<div class="eta-form" style="flex-direction:column; align-items:stretch;">
-        <input type="text" id="commandeSupplierInput-${r.id}" placeholder="Fournisseur (obligatoire) — ex. Würth, Point.P…" value="${escapeHtml(r.supplier || '')}" style="font-family:'Inter',sans-serif; padding:8px 10px; border-radius:7px; border:1px solid var(--line);">
-        <textarea id="commandeCommentInput-${r.id}" placeholder="Commentaire (optionnel) — ex. colis déposé en point relais" style="font-family:'Inter',sans-serif; padding:8px 10px; border-radius:7px; border:1px solid var(--line); min-height:50px; resize:vertical;"></textarea>
+        <input type="text" id="commandeSupplierInput-${r.id}" placeholder="Fournisseur (obligatoire) — ex. Würth, Point.P…" value="${escapeHtml(drafts['commandeSupplierInput-'+r.id] ?? (r.supplier || ''))}" style="font-family:'Inter',sans-serif; padding:8px 10px; border-radius:7px; border:1px solid var(--line);">
+        <textarea id="commandeCommentInput-${r.id}" placeholder="Commentaire (optionnel) — ex. colis déposé en point relais" style="font-family:'Inter',sans-serif; padding:8px 10px; border-radius:7px; border:1px solid var(--line); min-height:50px; resize:vertical;">${escapeHtml(drafts['commandeCommentInput-'+r.id] || '')}</textarea>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn-small btn-commande" data-action="confirmCommande" data-id="${r.id}">Confirmer la commande</button>
           <button class="btn-ghost" data-action="cancelCommande" data-id="${r.id}" style="padding:6px 12px; font-size:13px;">Annuler</button>
@@ -739,7 +740,7 @@ const sitesDocRef = doc(db, 'meta', 'sites');
     let etaForm = '';
     if(etaFormOpenFor === r.id){
       etaForm = `<div class="eta-form">
-        <input type="date" id="etaInput-${r.id}">
+        <input type="date" id="etaInput-${r.id}" value="${escapeHtml(drafts['etaInput-'+r.id] || '')}">
         <button class="btn-small btn-attente" data-action="confirmEta" data-id="${r.id}">Confirmer</button>
         <button class="btn-ghost" data-action="cancelEta" data-id="${r.id}" style="padding:6px 12px; font-size:13px;">Annuler</button>
       </div>`;
@@ -748,7 +749,7 @@ const sitesDocRef = doc(db, 'meta', 'sites');
     let deliveryForm = '';
     if(deliveryFormOpenFor === r.id){
       deliveryForm = `<div class="eta-form" style="flex-direction:column; align-items:stretch;">
-        <textarea id="deliveryCommentInput-${r.id}" placeholder="Commentaire (optionnel) — ex. donné à Cécile, déposé sur l'établi bleu…" style="font-family:'Inter',sans-serif; padding:8px 10px; border-radius:7px; border:1px solid var(--line); min-height:50px; resize:vertical;"></textarea>
+        <textarea id="deliveryCommentInput-${r.id}" placeholder="Commentaire (optionnel) — ex. donné à Cécile, déposé sur l'établi bleu…" style="font-family:'Inter',sans-serif; padding:8px 10px; border-radius:7px; border:1px solid var(--line); min-height:50px; resize:vertical;">${escapeHtml(drafts['deliveryCommentInput-'+r.id] || '')}</textarea>
         <div style="display:flex; gap:8px; flex-wrap:wrap;">
           <button class="btn-small btn-attente" data-action="confirmDeliveryPartial" data-id="${r.id}">Livraison partielle, reste à venir</button>
           <button class="btn-small btn-livre" data-action="confirmDeliveryComplete" data-id="${r.id}">Livraison complète</button>
@@ -894,6 +895,12 @@ const sitesDocRef = doc(db, 'meta', 'sites');
     renderCards();
   });
 
+  $('cardsList').addEventListener('input', (e)=>{
+    if(e.target && e.target.id){
+      drafts[e.target.id] = e.target.value;
+    }
+  });
+
   $('cardsList').addEventListener('click', async (e)=>{
     const btn = e.target.closest('button[data-action]');
     if(!btn) return;
@@ -903,9 +910,11 @@ const sitesDocRef = doc(db, 'meta', 'sites');
 
     if(action === 'openCommande'){
       if(!requireUser()) return;
+      delete drafts['commandeSupplierInput-'+id]; delete drafts['commandeCommentInput-'+id];
       commandeFormOpenFor = id;
       renderCards();
     } else if(action === 'cancelCommande'){
+      delete drafts['commandeSupplierInput-'+id]; delete drafts['commandeCommentInput-'+id];
       commandeFormOpenFor = null;
       renderCards();
     } else if(action === 'confirmCommande'){
@@ -919,6 +928,7 @@ const sitesDocRef = doc(db, 'meta', 'sites');
       }
       const comment = $('commandeCommentInput-' + id).value.trim();
       commandeFormOpenFor = null;
+      delete drafts['commandeSupplierInput-'+id]; delete drafts['commandeCommentInput-'+id];
       await updateRequestDoc(id, {
         status: STATUS.COMMANDE, orderedBy: currentUser, orderedAt: new Date().toISOString(),
         supplier, orderComment: comment
@@ -926,15 +936,18 @@ const sitesDocRef = doc(db, 'meta', 'sites');
       toast('Marqué comme commandé');
     } else if(action === 'openDelivery'){
       if(!requireUser()) return;
+      delete drafts['deliveryCommentInput-'+id];
       deliveryFormOpenFor = id;
       renderCards();
     } else if(action === 'cancelDelivery'){
+      delete drafts['deliveryCommentInput-'+id];
       deliveryFormOpenFor = null;
       renderCards();
     } else if(action === 'confirmDeliveryPartial'){
       if(!requireUser()) return;
       const comment = $('deliveryCommentInput-' + id).value.trim();
       deliveryFormOpenFor = null;
+      delete drafts['deliveryCommentInput-'+id];
       await updateRequestDoc(id, {
         status: STATUS.ATTENTE,
         deliveries: arrayUnion({ type:'partial', comment, by: currentUser, at: new Date().toISOString() })
@@ -944,6 +957,7 @@ const sitesDocRef = doc(db, 'meta', 'sites');
       if(!requireUser()) return;
       const comment = $('deliveryCommentInput-' + id).value.trim();
       deliveryFormOpenFor = null;
+      delete drafts['deliveryCommentInput-'+id];
       await updateRequestDoc(id, {
         status: STATUS.LIVRE,
         deliveries: arrayUnion({ type:'complete', comment, by: currentUser, at: new Date().toISOString() })
@@ -955,15 +969,18 @@ const sitesDocRef = doc(db, 'meta', 'sites');
         toast('Entrée supprimée');
       }
     } else if(action === 'openEta'){
+      delete drafts['etaInput-'+id];
       etaFormOpenFor = id;
       renderCards();
     } else if(action === 'cancelEta'){
+      delete drafts['etaInput-'+id];
       etaFormOpenFor = null;
       renderCards();
     } else if(action === 'confirmEta'){
       if(!requireUser()) return;
       const dateVal = $('etaInput-' + id).value;
       etaFormOpenFor = null;
+      delete drafts['etaInput-'+id];
       await updateRequestDoc(id, {
         status: STATUS.ATTENTE,
         deliveryEta: dateVal ? new Date(dateVal).toISOString() : ''
